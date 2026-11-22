@@ -48,12 +48,15 @@ enum ModFeature_e {
     MOD_FEATURE_NOTE_MESH = 1u << 4,
     MOD_FEATURE_DEPTH_TEXTURE = 1u << 5,
     MOD_FEATURE_SCENE_PRESENTATION = 1u << 6,
-    MOD_FEATURE_JUDGMENT_COUNTS = 1u << 7
+    MOD_FEATURE_JUDGMENT_COUNTS = 1u << 7,
+    MOD_FEATURE_ARC_PROJECTION_MESH = 1u << 8,
+    MOD_FEATURE_ASSET_READ_ERRORS = 1u << 9
 };
 
 enum VfxLayer_e { LAYER_BG = 0, LAYER_PLAYFIELD = 1, LAYER_VFX_FG = 2, LAYER_HUD = 3 };
 enum ModNodeKind_e {
     MOD_NODE_CANVAS = 0, MOD_NODE_SPRITE = 1, MOD_NODE_IMAGE = 2,
+    /* NATIVE identifies a host object returned by host_describe_object. */
     MOD_NODE_TEXT = 3, MOD_NODE_MESH = 4, MOD_NODE_CLONE = 5, MOD_NODE_NATIVE = 6,
     /* Clone a text drawable and keep its string synchronized with clone_source. */
     MOD_NODE_LIVE_TEXT = 7
@@ -62,11 +65,18 @@ enum ModBlend_e {
     MOD_BLEND_ALPHA = 0, MOD_BLEND_ADD = 1, MOD_BLEND_MULTIPLY = 2, MOD_BLEND_REPLACE = 3,
     MOD_BLEND_SCREEN = 4, MOD_BLEND_COMPOSITE = 5
 };
+/* COMPOSITE requires a package-owned sprite/image and a backdrop-sampling shader.
+ * Particles and post passes use the fixed-function modes ALPHA through SCREEN. */
 enum ModTextureFlags_e {
     MOD_TEXTURE_STRAIGHT_ALPHA = 1u << 0, MOD_TEXTURE_REPEAT = 1u << 1,
     MOD_TEXTURE_MIPMAP = 1u << 2, MOD_TEXTURE_NEAREST = 1u << 3
 };
 enum ModShaderFlags_e { MOD_SHADER_ASSET_PATHS = 1u << 0 };
+enum ModAssetReadError_e {
+    MOD_ASSET_NOT_FOUND = -1, MOD_ASSET_BUFFER_TOO_SMALL = -2,
+    MOD_ASSET_READ_FAILED = -3, MOD_ASSET_TOO_LARGE = -4
+};
+enum ModImportSource_e { MOD_IMPORT_ARCHIVE = 0, MOD_IMPORT_PACKAGE = 1 };
 enum ModRenderTargetFlags_e {
     RT_FLAG_PING_PONG = 1u << 0, RT_FLAG_DEPTH = 1u << 1, RT_FLAG_LINEAR = 1u << 2
 };
@@ -93,10 +103,11 @@ enum ModGroupFlags_e {
 };
 enum ModPostFlags_e {
     MOD_POST_CLEAR = 1u << 0,
-    /* Playfield pass depth in u_depthTex and optional u_overlayDepthTex.
+    /* Captured playfield depth in u_depthTex and optional u_overlayDepthTex.
      * The corresponding vec4 projection uniforms are u_depthProjection and
      * u_overlayDepthProjection, in matrix index order 10, 14, 11, 15.
-     * A zero projection marks an unavailable camera. */
+     * A zero projection marks an unavailable camera. Capture covers textured
+     * root triangles and eligible uninstanced VFX meshes with the default material. */
     MOD_POST_DEPTH = 1u << 1
 };
 
@@ -257,6 +268,7 @@ typedef struct VfxCameraCommand_t {
     uint32_t mode;
 } VfxCameraCommand_t;
 typedef struct VfxUniformF4_t { int32_t shader, slot; float value[4]; } VfxUniformF4_t;
+/* A vec4 slot of the bound material on a non-mesh node. */
 typedef struct VfxNodeUniformF4_t { int32_t handle, slot; float value[4]; } VfxNodeUniformF4_t;
 typedef struct VfxUniformMat4_t { int32_t shader, slot; float value[16]; } VfxUniformMat4_t;
 typedef struct VfxNodeShader_t { int32_t handle, shader, tex0, tex1; uint32_t wrap_flags; } VfxNodeShader_t;
@@ -268,8 +280,12 @@ typedef struct VfxInstanceData { float mat4[16]; uint32_t rgba; } VfxInstanceDat
 typedef struct VfxParticle { float position[3], size[2], angle; uint32_t rgba; } VfxParticle;
 typedef struct VfxMeshUpload_t { int32_t mesh; uint32_t v_cnt, i_cnt, index_fmt; } VfxMeshUpload_t;
 typedef struct VfxMeshInstances_t { int32_t mesh; uint32_t layer, count; } VfxMeshInstances_t;
-/* Variant selects the custom-hit-sound bit and optional light or dark style. An extent of one in
- * X fits the native model width. XY in [0,1] fits a projected sprite quad. */
+/* Variant selects the custom-hit-sound bit and optional light or dark style.
+ * LOCAL uses native local units. With MOD_FEATURE_ARC_PROJECTION_MESH, Arc projection LOCAL
+ * is centered and oriented on each ground quad.
+ * WIDTH scales a unit-width mesh to the ArcTap or Flick model. QUAD maps XY in [0,1] to a Tap, Hold,
+ * Arc projection or ArcTap projection quad. On Arc projection and Tap, the map follows the
+ * quad's two native triangles, including a collapsed edge. */
 typedef struct VfxNoteMeshBind_t { int32_t mesh; uint32_t part, variant, fit; } VfxNoteMeshBind_t;
 typedef struct VfxParticleBatch_t { int32_t shader, tex; uint32_t layer, blend, count; } VfxParticleBatch_t;
 typedef struct VfxNoteOverride_t {
@@ -357,6 +373,8 @@ ARCAEA_MOD_EXPORT(mod_on_scene) int32_t mod_on_scene(uint32_t scene_id, uint32_t
 ARCAEA_MOD_EXPORT(mod_seek) void mod_seek(int32_t chart_time_ms);
 /** @brief Produce one frame. @param frame Offset of ModFrameInput_t. @param slice Offset of writeable ModCmdSlice_t. */
 ARCAEA_MOD_EXPORT(mod_update) void mod_update(uint32_t frame, uint32_t slice);
+/** @brief Convert the current archive. Export with mod_abi_version from a chartImporter module. @return Zero on success. */
+ARCAEA_MOD_EXPORT(mod_convert) int32_t mod_convert(void);
 
 /** @brief Resolve a public scene object. @param name UTF-8 offset. @param length Bytes. @return Handle or negative error. */
 ARCAEA_MOD_IMPORT(host_find_object) int32_t host_find_object(uint32_t name, uint32_t length);
@@ -368,7 +386,7 @@ ARCAEA_MOD_IMPORT(host_create_node) int32_t host_create_node(uint32_t kind, uint
 ARCAEA_MOD_IMPORT(host_set_parent) int32_t host_set_parent(int32_t child, int32_t parent, uint32_t keep_world);
 /** @brief Load a package-local texture. @param path UTF-8 offset. @param bytes String length. @param flags Texture flags. @return Handle. */
 ARCAEA_MOD_IMPORT(host_load_texture) int32_t host_load_texture(uint32_t path, uint32_t bytes, uint32_t flags);
-/** @brief Compile UTF-8 vertex and fragment GLSL. @param vertex Vertex offset. @param vertex_bytes Length. @param fragment Fragment offset. @param fragment_bytes Length. @param flags Reserved. @return Handle. */
+/** @brief Compile UTF-8 GLSL or package-relative shader paths. @param vertex Vertex offset. @param vertex_bytes Length. @param fragment Fragment offset. @param fragment_bytes Length. @param flags ModShaderFlags_e bits. @return Handle. */
 ARCAEA_MOD_IMPORT(host_create_shader) int32_t host_create_shader(uint32_t vertex, uint32_t vertex_bytes, uint32_t fragment, uint32_t fragment_bytes, uint32_t flags);
 /** @brief Resolve a uniform once. @param shader Shader handle. @param name UTF-8 offset. @param bytes Length. @return Slot. */
 ARCAEA_MOD_IMPORT(host_uniform_slot) int32_t host_uniform_slot(int32_t shader, uint32_t name, uint32_t bytes);
@@ -393,10 +411,15 @@ ARCAEA_MOD_IMPORT(host_log) void host_log(uint32_t severity, uint32_t message, u
 /**
  * @brief Read a package-local resource into guest storage.
  * @param path UTF-8 offset. @param bytes Path length. @param out Destination offset.
- * @param capacity Capacity, or zero to query size. @return Byte count or a negative error.
- * @note During chart conversion an empty path reads the archive's NUL-terminated UTF-8 relative filenames.
+ * @param capacity Capacity, or zero to query size. @return Byte count or ModAssetReadError_e. Negative results leave the destination untouched.
+ * @note During chart conversion the path is relative to the input archive. An empty path reads its NUL-terminated UTF-8 filenames.
+ * In an effect module, check MOD_FEATURE_ASSET_READ_ERRORS before relying on recoverable failures.
  */
 ARCAEA_MOD_IMPORT(host_read_asset) int32_t host_read_asset(uint32_t path, uint32_t bytes, uint32_t out, uint32_t capacity);
+/** @brief Write a new file to the conversion output. @param path Relative output path offset. @param path_bytes Path length. @param data Raw file bytes offset. @param bytes Data length. @return Zero on success. */
+ARCAEA_MOD_IMPORT(host_import_write) int32_t host_import_write(uint32_t path, uint32_t path_bytes, uint32_t data, uint32_t bytes);
+/** @brief Copy an input file to a new conversion output path. @param source Relative input path offset. @param source_bytes Path length. @param output Relative output path offset. @param output_bytes Path length. @param source_kind ModImportSource_e value. @return Zero on success. */
+ARCAEA_MOD_IMPORT(host_import_copy) int32_t host_import_copy(uint32_t source, uint32_t source_bytes, uint32_t output, uint32_t output_bytes, uint32_t source_kind);
 #if defined(__cplusplus)
 }
 #endif

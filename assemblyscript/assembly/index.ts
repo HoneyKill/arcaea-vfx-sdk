@@ -1,19 +1,45 @@
 export const ABI_VERSION: u32 = 1;
+export const INIT_CONFIG_BYTES: u32 = 32;
+export const NODE_CONFIG_BYTES: u32 = 48;
 export const FRAME_INPUT_BYTES: u32 = 2976;
 export const SCENE_INPUT_OFFSET: usize = 1344;
 export const SHADER_ASSET_PATHS: u32 = 1;
 
 export enum Scene {
-  Start = 1, MainMenu, PackSelect, SongSelect, Gameplay, Results, Downloads
+  None = 0, Start, MainMenu, PackSelect, SongSelect, Gameplay, Results, Downloads
 }
 export enum ScenePhase { Enter = 0, Exit }
-export enum NodeKind { Canvas = 0, Sprite, Image, Text, Mesh, Clone }
+export enum Scope { Global = 0, Chart }
+export enum NodeKind { Canvas = 0, Sprite, Image, Text, Mesh, Clone, Native, LiveText }
 export enum Layer { Background = 0, Playfield, Foreground, Hud }
-export enum Blend { Alpha = 0, Add, Multiply, Replace }
+export enum Blend { Alpha = 0, Add, Multiply, Replace, Screen, Composite }
 export enum FrameFlag { Seeking = 1, Mirror = 2, Paused = 4, ReducedMotion = 8, Autoplay = 16, Practice = 32, FixedBpm = 64 }
+export enum Feature {
+  UintIndices = 1, Instancing = 2, HudPost = 4, DepthStencil = 8,
+  NoteMesh = 16, DepthTexture = 32, ScenePresentation = 64, JudgmentCounts = 128,
+  ArcProjectionMesh = 256, AssetReadErrors = 512
+}
+export enum TextureFlag { StraightAlpha = 1, Repeat = 2, Mipmap = 4, Nearest = 8 }
+export enum TargetFlag { PingPong = 1, Depth = 2, Linear = 4 }
+export enum PostFlag { Clear = 1, Depth = 2 }
+export enum IndexFormat { U16 = 16, U32 = 32 }
+export enum CameraMode { Relative = 0, Absolute, WorldOffset }
+export enum NotePart { TapBody = 0, HoldBody, ArcBody, ArcProjection, ArcTap, ArcTapProjection, FlickBody }
+export enum NoteMeshFit { Local = 0, Width, Quad }
+export enum NoteMeshVariant { CustomSound = 1, Light = 2, Dark = 4 }
+export const NOTE_MESH_VARIANT_COUNT: u32 = 6;
+export enum NoteFlag { Trace = 1, Input = 2 }
+export enum PaletteFlag { High = 1, Low = 2, Projection = 4 }
+export enum GroupFlag {
+  Hidden = 1, HideProjection = 2, HideArcHead = 4, HideArcCap = 8, HideGuides = 16,
+  KeepBody = 32, ReflectX = 64, LightStyle = 128, DarkStyle = 256
+}
+export enum AssetReadError { NotFound = -1, BufferTooSmall = -2, ReadFailed = -3, TooLarge = -4 }
+export enum ImportSource { Archive = 0, Package }
 export enum Opcode {
   Mat4 = 1, Color, Camera, UniformF4, UniformMat4, BindShader, MeshUpload, Instances,
-  Particles, NoteOverride, GroupPolicy, Text, RenderGraph, PlaySfx
+  Particles, NoteOverride, GroupPolicy, Text, RenderGraph, PlaySfx,
+  NoteMeshBind, NodeOrder, TextLayout, NodeUniformF4, NotePalette, GroupNoteTransform, Mat4Adjust
 }
 
 @external("arcaea", "host_find_object") export declare function findObject(name: u32, length: u32): i32;
@@ -26,12 +52,15 @@ export enum Opcode {
 @external("arcaea", "host_create_rt") export declare function createTarget(scale: u32, flags: u32): i32;
 @external("arcaea", "host_bind_note_shader") export declare function bindNoteShader(part: u32, shader: i32, flags: u32): i32;
 @external("arcaea", "host_read_notes") export declare function readNotes(first: u32, count: u32, out: u32): i32;
+@external("arcaea", "host_read_note_ordinals") export declare function readNoteOrdinals(first: u32, count: u32, out: u32): i32;
 @external("arcaea", "host_read_timings") export declare function readTimings(group: u32, first: u32, count: u32, out: u32): i32;
 @external("arcaea", "host_override_paths") export declare function overridePaths(paths: u32, count: u32): i32;
 @external("arcaea", "host_load_sfx") export declare function loadSfx(path: u32, length: u32): i32;
 @external("arcaea", "host_read_param") export declare function readParam(key: u32, length: u32, out: u32): i32;
 @external("arcaea", "host_log") export declare function logMessage(severity: u32, message: u32, bytes: u32): void;
 @external("arcaea", "host_read_asset") export declare function readAsset(path: u32, length: u32, out: u32, capacity: u32): i32;
+@external("arcaea", "host_import_write") export declare function importWrite(path: u32, pathBytes: u32, data: u32, bytes: u32): i32;
+@external("arcaea", "host_import_copy") export declare function importCopy(source: u32, sourceBytes: u32, output: u32, outputBytes: u32, sourceKind: u32): i32;
 
 /** Surface compiler aborts as a WebAssembly trap. */
 @global
@@ -71,6 +100,26 @@ export function rgba(red: u8, green: u8, blue: u8, alpha: u8): u32 {
   return <u32>red | (<u32>green << 8) | (<u32>blue << 16) | (<u32>alpha << 24);
 }
 
+/** Read the initialization record supplied to mod_init. */
+export namespace Init {
+  /** Read the ABI revision. */
+  export function version(ptr: usize): u32 { return load<u32>(ptr); }
+  /** Read the record's size in bytes. */
+  export function bytes(ptr: usize): u32 { return load<u32>(ptr + 4); }
+  /** Read the module scope. */
+  export function scope(ptr: usize): u32 { return load<u32>(ptr + 8); }
+  /** Read the scene ID. */
+  export function scene(ptr: usize): u32 { return load<u32>(ptr + 12); }
+  /** Read the chart difficulty slot, or -1 outside gameplay. */
+  export function difficulty(ptr: usize): i32 { return load<i32>(ptr + 16); }
+  /** Read the count for host_read_notes. */
+  export function noteCount(ptr: usize): u32 { return load<u32>(ptr + 20); }
+  /** Read the count of timing groups. */
+  export function timingGroupCount(ptr: usize): u32 { return load<u32>(ptr + 24); }
+  /** Read the Feature flags advertised on initialization. */
+  export function features(ptr: usize): u32 { return load<u32>(ptr + 28); }
+}
+
 /** Borrow the shared frame without allocating a per-frame typed object. */
 export namespace Frame {
   export function scene(ptr: usize): u32 { return load<u32>(ptr); }
@@ -79,6 +128,14 @@ export namespace Frame {
   export function delta(ptr: usize): f32 { return load<f32>(ptr + 16); }
   export function rms(ptr: usize): f32 { return load<f32>(ptr + 20); }
   export function onset(ptr: usize): f32 { return load<f32>(ptr + 24); }
+  /** Read the number of published touch records. */
+  export function touchCount(ptr: usize): u32 { return load<u32>(ptr + 28); }
+  /** Borrow a ModTouchPoint_t record, or return zero for an absent contact. */
+  export function touch(ptr: usize, index: u32): usize {
+    return index < min<u32>(touchCount(ptr), 10) ? ptr + 1104 + index * 24 : 0;
+  }
+  /** Read a component of the pixel viewport in x, y, width, height order. */
+  export function viewport(ptr: usize, index: u32): f32 { return index < 4 ? load<f32>(ptr + 32 + index * 4) : 0; }
   export function designWidth(ptr: usize): f32 { return load<f32>(ptr + 48); }
   export function designHeight(ptr: usize): f32 { return load<f32>(ptr + 52); }
   export function band(ptr: usize, index: u32): f32 { return index < 4 ? load<f32>(ptr + 64 + index * 4) : 0; }
@@ -92,6 +149,10 @@ export namespace Frame {
   export function histogram(ptr: usize, bin: u32): u32 {
     return bin < 64 ? load<u32>(ptr + SCENE_INPUT_OFFSET + 48 + bin * 4) : 0;
   }
+  /** Borrow the scene union using the corresponding C layout. */
+  export function sceneInput(ptr: usize): usize { return ptr + SCENE_INPUT_OFFSET; }
+  /** Borrow ModJudgmentCounts_t when the gameplay initialization advertised JudgmentCounts. */
+  export function judgmentCounts(ptr: usize): usize { return sceneInput(ptr) + 1600; }
 }
 
 /** Own one guest command buffer and recycle it across frames. */

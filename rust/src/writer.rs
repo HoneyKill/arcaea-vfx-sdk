@@ -36,7 +36,8 @@ macro_rules! wire {
 wire!(u16, u32, abi::MatrixCommand, abi::ColorCommand, abi::CameraCommand, abi::UniformF4,
     abi::UniformMat4, abi::ShaderBinding, abi::Vertex, abi::Instance, abi::Particle, abi::MeshUpload,
     abi::MeshInstances, abi::ParticleBatch, abi::NoteOverride, abi::GroupPolicy, abi::TextUpdate,
-    abi::PostPass, abi::PlaySound);
+    abi::PostPass, abi::PlaySound, abi::NoteMeshBind, abi::NodeOrder, abi::TextLayout, abi::NodeUniformF4,
+    abi::NotePalette, abi::GroupNoteTransform);
 
 /// Own a reusable command buffer, growing it in the guest only when necessary.
 #[derive(Default)]

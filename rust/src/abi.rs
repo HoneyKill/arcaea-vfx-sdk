@@ -3,11 +3,19 @@ use core::mem::{offset_of, size_of};
 pub const VERSION: u32 = 1;
 pub const SCOPE_GLOBAL: u32 = 0;
 pub const SCOPE_CHART: u32 = 1;
+pub const FEATURE_UINT_INDICES: u32 = 1 << 0;
+pub const FEATURE_INSTANCING: u32 = 1 << 1;
+pub const FEATURE_HUD_POST: u32 = 1 << 2;
+pub const FEATURE_DEPTH_STENCIL: u32 = 1 << 3;
 pub const FEATURE_NOTE_MESH: u32 = 1 << 4;
 pub const FEATURE_DEPTH_TEXTURE: u32 = 1 << 5;
 pub const FEATURE_SCENE_PRESENTATION: u32 = 1 << 6;
 pub const FEATURE_JUDGMENT_COUNTS: u32 = 1 << 7;
+pub const FEATURE_ARC_PROJECTION_MESH: u32 = 1 << 8;
+pub const FEATURE_ASSET_READ_ERRORS: u32 = 1 << 9;
 pub const NOTE_MESH_VARIANT_COUNT: u32 = 6;
+pub const CAMERA_RELATIVE: u32 = 0;
+pub const CAMERA_ABSOLUTE: u32 = 1;
 pub const CAMERA_WORLD_OFFSET: u32 = 2;
 /// Reflect the rendered group on its local X axis before applying the group rotation.
 pub const GROUP_REFLECT_X: u32 = 1 << 6;
@@ -15,6 +23,7 @@ pub const PHASE_ENTER: u32 = 0;
 pub const PHASE_EXIT: u32 = 1;
 
 pub mod scene {
+    pub const NONE: u32 = 0;
     pub const START: u32 = 1;
     pub const MAIN_MENU: u32 = 2;
     pub const PACK_SELECT: u32 = 3;
@@ -48,6 +57,7 @@ pub mod node {
     pub const TEXT: u32 = 3;
     pub const MESH: u32 = 4;
     pub const CLONE: u32 = 5;
+    pub const NATIVE: u32 = 6;
     pub const LIVE_TEXT: u32 = 7;
 }
 
@@ -76,7 +86,87 @@ pub mod opcode {
 }
 
 pub const SHADER_ASSET_PATHS: u32 = 1;
+pub const POST_CLEAR: u32 = 1;
 pub const POST_DEPTH: u32 = 1 << 1;
+
+pub mod blend {
+    pub const ALPHA: u8 = 0;
+    pub const ADD: u8 = 1;
+    pub const MULTIPLY: u8 = 2;
+    pub const REPLACE: u8 = 3;
+    pub const SCREEN: u8 = 4;
+    pub const COMPOSITE: u8 = 5;
+}
+
+pub mod texture {
+    pub const STRAIGHT_ALPHA: u32 = 1;
+    pub const REPEAT: u32 = 1 << 1;
+    pub const MIPMAP: u32 = 1 << 2;
+    pub const NEAREST: u32 = 1 << 3;
+}
+
+pub mod rt {
+    pub const PING_PONG: u32 = 1;
+    pub const DEPTH: u32 = 1 << 1;
+    pub const LINEAR: u32 = 1 << 2;
+}
+
+pub mod note_part {
+    pub const TAP_BODY: u32 = 0;
+    pub const HOLD_BODY: u32 = 1;
+    pub const ARC_BODY: u32 = 2;
+    pub const ARC_PROJECTION: u32 = 3;
+    pub const ARCTAP: u32 = 4;
+    pub const ARCTAP_PROJECTION: u32 = 5;
+    pub const FLICK_BODY: u32 = 6;
+}
+
+pub mod note_mesh {
+    pub const LOCAL: u32 = 0;
+    pub const WIDTH: u32 = 1;
+    pub const QUAD: u32 = 2;
+    pub const CUSTOM_SOUND: u32 = 1;
+    pub const LIGHT: u32 = 2;
+    pub const DARK: u32 = 4;
+}
+
+pub mod group {
+    pub const HIDDEN: u32 = 1;
+    pub const HIDE_PROJECTION: u32 = 1 << 1;
+    pub const HIDE_ARC_HEAD: u32 = 1 << 2;
+    pub const HIDE_ARC_CAP: u32 = 1 << 3;
+    pub const HIDE_GUIDES: u32 = 1 << 4;
+    pub const KEEP_BODY: u32 = 1 << 5;
+    pub use super::GROUP_REFLECT_X as REFLECT_X;
+    pub const LIGHT_STYLE: u32 = 1 << 7;
+    pub const DARK_STYLE: u32 = 1 << 8;
+}
+
+pub mod note_flag {
+    pub const TRACE: u32 = 1;
+    pub const INPUT: u32 = 1 << 1;
+}
+
+pub mod palette_flag {
+    pub const HIGH: u32 = 1;
+    pub const LOW: u32 = 1 << 1;
+    pub const PROJECTION: u32 = 1 << 2;
+}
+
+pub const INDEX_U16: u32 = 16;
+pub const INDEX_U32: u32 = 32;
+
+pub mod asset_error {
+    pub const NOT_FOUND: i32 = -1;
+    pub const BUFFER_TOO_SMALL: i32 = -2;
+    pub const READ_FAILED: i32 = -3;
+    pub const TOO_LARGE: i32 = -4;
+}
+
+pub mod import_source {
+    pub const ARCHIVE: u32 = 0;
+    pub const PACKAGE: u32 = 1;
+}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -403,6 +493,8 @@ const _: () = {
     assert!(size_of::<NodeConfig>() == 48 && size_of::<ObjectDescription>() == 152);
     assert!(size_of::<Vertex>() == 36 && size_of::<Instance>() == 68 && size_of::<Particle>() == 28);
     assert!(size_of::<CameraCommand>() == 68 && size_of::<NoteOverride>() == 52 && size_of::<PostPass>() == 32);
+    assert!(size_of::<NoteMeshBind>() == 16 && size_of::<NodeOrder>() == 8 && size_of::<TextLayout>() == 24);
+    assert!(size_of::<NodeUniformF4>() == 24 && size_of::<NotePalette>() == 20 && size_of::<GroupNoteTransform>() == 40);
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -424,5 +516,10 @@ extern "C" {
     pub fn host_load_sfx(path: u32, bytes: u32) -> i32;
     pub fn host_read_param(key: u32, bytes: u32, out: u32) -> i32;
     pub fn host_log(severity: u32, message: u32, bytes: u32);
+    /// Query with zero capacity, or copy bytes and return their count. Negative results are in `asset_error`.
     pub fn host_read_asset(path: u32, bytes: u32, out: u32, capacity: u32) -> i32;
+    /// Write a relative output file during the exported `mod_convert` callback.
+    pub fn host_import_write(path: u32, path_bytes: u32, data: u32, bytes: u32) -> i32;
+    /// Copy a file from `import_source` during the exported `mod_convert` callback.
+    pub fn host_import_copy(source: u32, source_bytes: u32, output: u32, output_bytes: u32, source_kind: u32) -> i32;
 }

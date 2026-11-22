@@ -9,9 +9,11 @@ const sdk = dirname(fileURLToPath(import.meta.url));
 const project = process.cwd();
 const flags = process.argv.slice(2);
 const watching = flags.includes("--watch");
+const importer = flags.includes("--importer");
 const entry = resolve(project, flags.find(value => !value.startsWith("--")) || "main.ts");
 const outArg = flags.find(value => value.startsWith("--output="));
-const destination = outArg ? resolve(project, outArg.slice("--output=".length)) : join(project, "vfx", "main.wasm");
+const destination = outArg ? resolve(project, outArg.slice("--output=".length))
+  : join(project, "vfx", importer ? "importer.wasm" : "main.wasm");
 const temporary = destination + ".next";
 const compiler = join(project, "node_modules", "assemblyscript", "bin", "asc.js");
 
