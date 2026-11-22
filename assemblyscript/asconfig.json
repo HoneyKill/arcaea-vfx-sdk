@@ -1,0 +1,12 @@
+{
+  "options": {
+    "runtime": "stub",
+    "exportStart": "arcaea_runtime_start",
+    "enable": ["bulk-memory"],
+    "disable": ["simd", "threads", "reference-types"],
+    "use": ["abort=arcaeaAbort"]
+  },
+  "targets": {
+    "release": { "optimizeLevel": 3, "shrinkLevel": 1 }
+  }
+}

@@ -1,0 +1,5 @@
+[build]
+target = "wasm32-unknown-unknown"
+
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=-simd128,-reference-types,-multivalue,-atomics,+bulk-memory", "-C", "link-arg=--no-entry", "-C", "link-arg=--export-memory"]

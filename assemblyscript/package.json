@@ -1,0 +1,7 @@
+{
+  "name": "arcaea-vfx-sdk",
+  "version": "1.0.0",
+  "private": true,
+  "main": "assembly/index.ts",
+  "devDependencies": { "assemblyscript": "0.27.31" }
+}
