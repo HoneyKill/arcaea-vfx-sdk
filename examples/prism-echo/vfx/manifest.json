@@ -1,0 +1,21 @@
+{
+  "abi": 1,
+  "id": "example.prism-echo",
+  "name": "Prism Echo",
+  "version": "1.0.0",
+  "scope": "global",
+  "scenes": ["main_menu"],
+  "entry": "main.wasm",
+  "summary": "A rotating glass prism with music-driven light and ripples on touch.",
+  "params": {
+    "intensity": {
+      "title": "Light intensity",
+      "description": "Controls the brightness of the prism and its bloom.",
+      "type": "float",
+      "min": 0.4,
+      "max": 1.4,
+      "step": 0.1,
+      "default": 1.0
+    }
+  }
+}

@@ -1,9 +1,0 @@
-{
-  "abi": 1,
-  "id": "example.tidal-spectrum",
-  "name": "Tidal Spectrum",
-  "scope": "global",
-  "scenes": ["main_menu"],
-  "entry": "main.wasm",
-  "summary": "A cyan and violet ribbon driven by the main-menu music."
-}
